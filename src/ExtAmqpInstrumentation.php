@@ -6,6 +6,7 @@ namespace OpenTelemetry\Contrib\Instrumentation\ExtAmqp;
 
 use AMQPExchange;
 use AMQPQueue;
+use PhpAmqpLib\Channel\AMQPChannel;
 use Composer\InstalledVersions;
 use OpenTelemetry\API\Globals;
 use OpenTelemetry\API\Instrumentation\CachedInstrumentation;
@@ -26,27 +27,29 @@ final class ExtAmqpInstrumentation
     {
         $instrumentation = new CachedInstrumentation(
             'io.opentelemetry.contrib.php.ext_amqp',
-            InstalledVersions::getVersion('open-telemetry/opentelemetry-auto-ext-amqp'),
+            InstalledVersions::getVersion('new999day/opentelemetry-auto-ext-amqp'),
             TraceAttributes::SCHEMA_URL,
         );
 
         hook(
-            AMQPExchange::class,
-            'publish',
+            AMQPChannel::class,
+            'basic_publish',
             pre: static function (
-                AMQPExchange $exchange,
+                AMQPChannel $channel,
                 array $params,
                 string $class,
                 string $function,
                 ?string $filename,
                 ?int $lineno,
             ) use ($instrumentation): array {
-                $routingKey = $params[1];
+                $payload = isset($params[0]) ? (string)$params[0]->body : '';
+                $exchangeName = $params[1];
+                $routingKey = $params[2];
 
                 /** @psalm-suppress ArgumentTypeCoercion */
                 $builder = $instrumentation
                     ->tracer()
-                    ->spanBuilder(sprintf('%s%s', $exchange->getName() != '' ? $exchange->getName() . ' ': '', $routingKey) . ' publish')
+                    ->spanBuilder(sprintf('%s%s', $exchangeName != '' ? $exchangeName . ' ': '', $routingKey) . ' publish')
                     ->setSpanKind(SpanKind::KIND_PRODUCER)
                     // code
                     ->setAttribute(TraceAttributes::CODE_FUNCTION, $function)
@@ -59,23 +62,18 @@ final class ExtAmqpInstrumentation
 
                     ->setAttribute(TraceAttributes::MESSAGING_DESTINATION, $routingKey)
                     ->setAttribute(TraceAttributes::MESSAGING_DESTINATION_NAME, $routingKey)
-                    ->setAttribute(TraceAttributes::MESSAGING_DESTINATION_PUBLISH_NAME, sprintf('%s%s', $exchange->getName() != '' ? $exchange->getName() . ' ': '', $routingKey))
-
-                    ->setAttribute(TraceAttributes::MESSAGING_DESTINATION_KIND, $exchange->getType() !== '' ? $exchange->getType() : 'unknown')
+                    ->setAttribute(TraceAttributes::MESSAGING_DESTINATION_PUBLISH_NAME, sprintf('%s%s', $exchangeName != '' ? $exchangeName . ' ': '', $routingKey))
 
                     ->setAttribute(TraceAttributes::MESSAGING_RABBITMQ_ROUTING_KEY, $routingKey)
                     ->setAttribute(TraceAttributes::MESSAGING_RABBITMQ_DESTINATION_ROUTING_KEY, $routingKey)
+                    ->setAttribute(TraceAttributes::MESSAGING_RABBITMQ_DESTINATION_ROUTING_KEY, $routingKey)
+                    ->setAttribute('messaging.message.body', $payload)
 
                     // network
                     ->setAttribute(TraceAttributes::NET_PROTOCOL_NAME, 'amqp')
                     ->setAttribute(TraceAttributes::NETWORK_PROTOCOL_NAME, 'amqp')
                     ->setAttribute(TraceAttributes::NET_TRANSPORT, 'tcp')
                     ->setAttribute(TraceAttributes::NETWORK_TRANSPORT, 'tcp')
-
-                    ->setAttribute(TraceAttributes::NET_PEER_NAME, $exchange->getConnection()->getHost())
-                    ->setAttribute(TraceAttributes::NETWORK_PEER_ADDRESS, $exchange->getConnection()->getHost())
-                    ->setAttribute(TraceAttributes::NET_PEER_PORT, $exchange->getConnection()->getPort())
-                    ->setAttribute(TraceAttributes::NETWORK_PEER_PORT, $exchange->getConnection()->getPort())
                 ;
 
                 $parent = Context::getCurrent();
@@ -111,7 +109,7 @@ final class ExtAmqpInstrumentation
                 return $params;
             },
             post: static function (
-                AMQPExchange $exchange,
+                AMQPChannel $channel,
                 array $params,
                 ?bool $success,
                 ?Throwable $exception,
