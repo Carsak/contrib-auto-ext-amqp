@@ -1,5 +1,5 @@
 {
-  "name": "new999day/opentelemetry-auto-ext-amqp",
+  "name": "carsak/opentelemetry-auto-ext-amqp",
   "description": "OpenTelemetry auto-instrumentation for ext-amqp",
   "keywords": ["opentelemetry", "otel", "open-telemetry", "tracing", "io", "instrumentation"],
   "type": "library",
